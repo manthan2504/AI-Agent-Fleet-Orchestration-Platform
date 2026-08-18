@@ -37,7 +37,7 @@ Relevant constraints already decided elsewhere in `docs/`:
 
 - If the still-open vector database decision (`persistence.md` §9.3) lands on pgvector, platform and dashboard end up sharing one database engine (PostgreSQL) for both operational and semantic storage. This is a reason to weight that open decision toward pgvector — not a conclusion it forces.
 - Real-time dashboard views need a dedicated WebSocket/SSE layer. Next.js API routes don't hold persistent connections well on their own — this is a component still to be designed, not something this decision resolves.
-- The operational version of this decision — the part an implementing agent actually has to follow — lives in `.claude/rules/tech-stack.md`. This document is the rationale; that one is the enforced rule.
+- The operational version of this decision — the part an implementing agent actually has to follow — lives in `.claude/rules/techstack.md`. This document is the rationale; that one is the enforced rule.
 
 ## References
 

@@ -72,7 +72,7 @@ Implement:
 
 ## Phase 6 — Fleet Dashboard
 
-Full build checklist already lives in `observability.md` §10.7 (Dashboard Build Scope) — not repeated here to avoid two copies drifting apart. Tech stack for this phase is decided: `docs/decisions/0001-dashboard-and-platform-tech-stack.md`, enforced via `.claude/rules/tech-stack.md`.
+Full build checklist already lives in `observability.md` §10.7 (Dashboard Build Scope) — not repeated here to avoid two copies drifting apart. Tech stack for this phase is decided: `docs/decisions/dashboard-and-platform-tech-stack.md`, enforced via `.claude/rules/techstack.md`.
 
 **Depends on:** Phase 4 and Phase 5 substantially built — the dashboard displays task state, traces, metrics, and costs that don't exist to display until those phases produce them. This is inference from what the dashboard actually needs, not stated explicitly in the source spec, but worth treating as a real dependency rather than starting dashboard work in parallel with infrastructure that isn't emitting anything yet.
 

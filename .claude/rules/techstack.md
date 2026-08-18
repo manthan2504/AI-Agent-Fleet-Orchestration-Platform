@@ -7,7 +7,7 @@ paths:
 
 # Technology Stack
 
-Full rationale and alternatives considered: `docs/decisions/0001-dashboard-and-platform-tech-stack.md`. This file is the operational version — what to actually do, not why.
+Full rationale and alternatives considered: `docs/decisions/dashboard-and-platform-tech-stack.md`. This file is the operational version — what to actually do, not why.
 
 ## Fleet Platform backend
 

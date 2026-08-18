@@ -37,7 +37,7 @@ Each department does its own work, in its own context, retrieving shared knowled
 ├── agents/    Dev-loop subagents that build this platform (not the platform's own runtime agents — see below)
 ├── skills/    Invocable methods any agent can pull in: research, architecture-review, implementation,
 │              testing, security-review, find-skills
-└── rules/     Always-loaded, auto-applied: coding.md, architecture.md, documentation.md, tech-stack.md
+└── rules/     Always-loaded, auto-applied: coding.md, architecture.md, documentation.md, techstack.md
 docs/          The actual specification — 13 files, one per domain. Source of truth for facts.
 scripts/       validate-safe-bash.sh — the real enforcement backstop behind the security rules below
 skills-lock.json  Tracks marketplace-installed skills (project root, committed)
@@ -92,7 +92,7 @@ Understand → Research → Plan/Brainstorm → Implement → Finetune
 - **Understand** — read the relevant `docs/` files and the auto-loaded rules. Don't skip this because the task looks familiar.
 - **Research** — `researcher` (`research` skill), parallelized per above when it decomposes. Verify, don't assume — especially anything touching OpenClaw.
 - **Plan/Brainstorm** — `architect` (`architecture-review` skill). Real alternatives compared, not a single option rationalized.
-- **Implement** — `implementer` (`implementation` skill), bound by `.claude/rules/tech-stack.md` and `.claude/rules/coding.md`.
+- **Implement** — `implementer` (`implementation` skill), bound by `.claude/rules/techstack.md` and `.claude/rules/coding.md`.
 - **Finetune** — not a separate step. This is the review loop below, run until it actually passes.
 
 ## The Review Loop — Does Not Stop Until the Objective Is Actually Built
@@ -131,7 +131,7 @@ Do not treat any of the following as settled. Each needs `architect`/`researcher
 1. **Operations agent** — in the spec's Purpose section, missing from the Agent Registry. Unresolved whether it's folded into DevOps or was dropped by mistake. (`docs/runtime-agents.md` §3.3)
 2. **Vector database technology** — not specified. Affects `docs/persistence.md` §9.3 and Phase 2 of `docs/roadmap.md`.
 3. **What OpenClaw actually provides** — the biggest open item. The Fleet Manager's design depends on knowing what's free versus what has to be built (`docs/runtime.md` §7.1).
-4. **ADR numbering** — `docs/decisions/0001-dashboard-and-platform-tech-stack.md` may need to become `0002` if the OpenClaw decision gets backfilled as the true `0001`.
+4. **ADR numbering** — `docs/decisions/dashboard-and-platform-tech-stack.md` self-titles as "0001" internally but the filename carries no prefix; it may need to become `0002` if the OpenClaw decision gets backfilled as the true `0001`.
 
 ## Current Phase
 
@@ -142,7 +142,7 @@ Phase 1 — Foundation. Only these agents are in scope: Executive Orchestrator, 
 - No secrets in code, comments, logs, or commit history — ever, regardless of framing. (`docs/security-architecture.md` §8.8)
 - No production deploy, destructive DB operation, credential rotation, infra destruction, financial transaction, or external comms without explicit human approval. (`docs/security-architecture.md` §8.7)
 - Tool permissions are enforced in code, never asserted only in a prompt. (`docs/security-architecture.md` §8.3)
-- No MongoDB or document store for operational data — that's relational by design. (`.claude/rules/tech-stack.md`)
+- No MongoDB or document store for operational data — that's relational by design. (`.claude/rules/techstack.md`)
 - Nothing about OpenClaw's actual capabilities gets assumed. Verified, or flagged unverified. No third option.
 
 ## The Standard
