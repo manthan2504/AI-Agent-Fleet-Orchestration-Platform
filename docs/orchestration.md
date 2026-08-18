@@ -128,35 +128,55 @@ QUEUED
    ↓
 ASSIGNED
    ↓
-RUNNING
-   ├──→ COMPLETED
+RUNNING ⇄ PENDING_APPROVAL          (a tool call inside the task needs human sign-off — §8.7)
    │
-   └──→ FAILED
-          ↓
-        RETRY
-          ↓
-        RUNNING
+   ├──→ COMPLETED
+   ├──→ PARTIALLY_COMPLETED          (parent task only, mixed child outcomes — §4.4.4)
+   ├──→ TIMED_OUT ──┐
+   └──→ FAILED ──────┼──→ RETRY ──→ RUNNING
+                      └──→ DEAD_LETTERED   (retry budget exhausted or explicitly non-retryable)
+
+CANCELLED can be reached from any non-terminal state above
+(CREATED, QUEUED, ASSIGNED, RUNNING, or PENDING_APPROVAL) — it is a deliberate
+stop, not a failure.
 ```
+
+| State | Meaning |
+|---|---|
+| `CREATED` | Task has been created, not yet queued |
+| `QUEUED` | Waiting in the Task Queue (§4.4.1) for an available agent |
+| `ASSIGNED` | A specific agent instance has been assigned, not yet started |
+| `RUNNING` | Actively executing |
+| `PENDING_APPROVAL` | Execution is paused because a tool call inside this task requires human approval before it can continue (`security-architecture.md` §8.7); resumes to `RUNNING` on approval, moves to `CANCELLED` on rejection |
+| `COMPLETED` | Finished successfully |
+| `PARTIALLY_COMPLETED` | A parent task's child tasks (§4.4.4) finished with a mix of outcomes — some `COMPLETED`, some `FAILED`/`CANCELLED` — and the parent is returning a best-available result rather than treating the whole task as failed |
+| `FAILED` | Finished unsuccessfully; classified per §4.6 and either retried or escalated |
+| `RETRY` | Being re-attempted after a `FAILED` or `TIMED_OUT` classification, per the agent's retry policy (`runtime-agents.md` §3.2) |
+| `TIMED_OUT` | Exceeded its configured `Timeout` (§4.4.3) before finishing |
+| `CANCELLED` | Stopped intentionally before completion — by a human, the orchestrator, or a parent task's own cancellation — not a failure |
+| `DEAD_LETTERED` | Exhausted its retry budget (or was explicitly non-retryable) and is parked for manual inspection instead of being retried indefinitely |
+
+**Why not `BLOCKED` / `AWAITING_APPROVAL` at the task level?** `runtime-agents.md` §3.4 already uses those exact names for *Agent Health State* — a different concept (can this agent instance make progress on anything right now?) from task lifecycle state (is this specific task progressing?). Reusing the same names here would make logs and dashboards ambiguous about which one a given state refers to. The task-level equivalent of "needs a human" is named `PENDING_APPROVAL` instead, and a generic task-level `BLOCKED` was deliberately not added — a task waiting on something is already represented by the states above (`QUEUED` before assignment, or the parent/child structure in §4.4.4), so a further state isn't warranted yet.
 
 ### 4.4.3 Task Metadata
 
-A task carries enough information for the fleet to track and manage it — useful for execution, but just as much for monitoring, debugging, cost tracking, and auditing:
+A task carries enough information for the fleet to track and manage it — useful for execution, but just as much for monitoring, debugging, cost tracking, and auditing. This is the `Task` entity's field reference; `TaskStatus` is the enum defined in §4.4.2.
 
-| Field | Purpose |
-|---|---|
-| Task ID | Unique identifier |
-| Parent Task ID | Links a child task back to its parent (§4.4.4) |
-| Department | Owning department |
-| Assigned Agent | Owning agent instance |
-| Priority | Scheduling weight |
-| Status | Current lifecycle state (§4.4.2) |
-| Retry Count | How many retries have occurred |
-| Created At / Started At / Completed At | Timestamps |
-| Timeout | Maximum allowed execution time |
-| Cost | Accumulated cost for this task |
-| Token Usage | Accumulated token consumption |
-| Error Information | Populated on failure |
-| Trace ID | Links to the distributed trace |
+| Field | Type | Required | Purpose |
+|---|---|---|---|
+| Task ID | string | yes | Unique identifier |
+| Parent Task ID | string | no | Links a child task back to its parent (§4.4.4) |
+| Department | string | yes | Owning department |
+| Assigned Agent | agent instance ID | no (set on `ASSIGNED`) | Owning agent instance |
+| Priority | enum: `LOW`, `NORMAL`, `HIGH` | yes | Scheduling weight |
+| Status | `TaskStatus` (§4.4.2) | yes | Current lifecycle state |
+| Retry Count | number | yes (defaults 0) | How many retries have occurred |
+| Created At / Started At / Completed At | timestamp | Created At: yes; others: only once reached | Timestamps |
+| Timeout | number (ms) | yes | Maximum allowed execution time before moving to `TIMED_OUT` |
+| Cost | number | yes (defaults 0) | Accumulated cost for this task |
+| Token Usage | number | yes (defaults 0) | Accumulated token consumption |
+| Error Information | object (failure type per §4.6, message, stack/trace ref) | only on `FAILED`/`TIMED_OUT`/`DEAD_LETTERED` | Populated on failure |
+| Trace ID | string | yes | Links to the distributed trace |
 
 Full detail on how cost and token usage are actually tracked and aggregated lives in `memory-and-observability.md` — this table is what a task carries, not how the platform rolls it up.
 
@@ -242,6 +262,8 @@ Agent → Task → FAILURE → Retry Policy
 | Invalid output | Output didn't meet the expected format/requirements |
 
 This is what lets the platform decide what happens next instead of treating every failure identically — a policy rejection and a transient network blip are not the same event and shouldn't trigger the same response. Retry/timeout policy defaults are set per-agent in the agent definition (`runtime-agents.md` §3.2); this is where those defaults actually get exercised at the task level.
+
+In terms of the task lifecycle (§4.4.2): a `Timeout` failure moves the task to `TIMED_OUT`; every other failure type here moves it to `FAILED`. Both are eligible for the `RETRY` transition unless the failure is classified `Permanent` or the retry budget is already exhausted, in which case the task moves to `DEAD_LETTERED` instead of retrying indefinitely.
 
 ## 4.7 Agent-to-Agent Collaboration
 

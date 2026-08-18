@@ -130,7 +130,7 @@ Do not treat any of the following as settled. Each needs `architect`/`researcher
 
 1. **Operations agent** — in the spec's Purpose section, missing from the Agent Registry. Unresolved whether it's folded into DevOps or was dropped by mistake. (`docs/runtime-agents.md` §3.3)
 2. **Vector database technology** — not specified. Affects `docs/persistence.md` §9.3 and Phase 2 of `docs/roadmap.md`.
-3. **What OpenClaw actually provides** — the biggest open item. The Fleet Manager's design depends on knowing what's free versus what has to be built (`docs/runtime.md` §7.1).
+3. **What OpenClaw actually provides** — substantially verified now (`docs/runtime.md` §7.1's "Verified findings," 2026-08-18): skills, hooks, the agent loop, and plugin-sdk scope are confirmed, and a real async delegation primitive (`sessions_spawn`/`sessions_yield`) exists, closer to a handoff than originally assumed. Still genuinely open, not resolved: whether a durable cross-process task queue exists anywhere in OpenClaw, and whether `trustedToolPolicies` covers this project's Permission Manager needs (see `docs/security-architecture.md` §8.3.2's grounding note). Don't treat those two sub-questions as settled.
 4. **ADR numbering** — `docs/decisions/dashboard-and-platform-tech-stack.md` self-titles as "0001" internally but the filename carries no prefix; it may need to become `0002` if the OpenClaw decision gets backfilled as the true `0001`.
 
 ## Current Phase

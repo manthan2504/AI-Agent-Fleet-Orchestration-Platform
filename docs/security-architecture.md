@@ -38,7 +38,7 @@ What each layer actually does:
 | **Output Guardrails** | What's allowed to leave the system? Prevents restricted information surfacing in a final response. |
 | **Secret Management** | Credentials never live directly in prompts, memory, logs, or source code — managed separately. |
 
-> **How this connects to OpenClaw.** `runtime.md` §7.1 flags that OpenClaw's own security model is different in kind from an SDK-style guardrail hook — it centers on manifest-driven skill contracts, WASM sandboxing, and cryptographic verification of installed skills. That's a *complementary* layer to what's described here, not a replacement for it: NeMo Guardrails governs model/tool/retrieval interactions, OpenClaw's sandboxing protects the execution runtime itself. Don't assume these two layers compose cleanly without checking — route that through `research` before relying on it.
+> **How this connects to OpenClaw.** `runtime.md` §7.1's verified findings (2026-08-18) correct an earlier assumption here: OpenClaw skills are **not** WASM-sandboxed or cryptographically verified on install by default — they're `SKILL.md` prompt-injected instruction packs, explicitly documented as "untrusted code." Real sandboxing exists but is a separate, opt-in, tool-execution-scoped mechanism (Docker/Podman/SSH containers), not a skill-install-time guarantee. Practically: don't lean on OpenClaw's skill system for supply-chain integrity or execution isolation — that has to be enforced at this project's own policy layer (Tool Gateway, §8.6) or the operator-side sandboxing config, not assumed from the runtime. NeMo Guardrails and OpenClaw's sandboxing remain complementary, not substitutes for each other, but neither substitutes for the layers in this document either.
 
 ## 8.2 Authentication & Authorization
 
@@ -87,6 +87,47 @@ System Prompt: "You are not allowed to deploy."
 A system prompt is a request to the model, not a control. The actual Tool Gateway (§8.6) has to prevent unauthorized deployment regardless of what the prompt says.
 
 > **This project already enforces this principle**, one layer down: `implementer.md`, `reviewer.md`, and `security.md` each have a `PreToolUse` hook (`scripts/validate-safe-bash.sh`) that blocks destructive/production commands at the tool-execution layer — not just an instruction in the agent's prompt saying not to run them. Same principle, already running, not just described.
+
+### 8.3.1 Tool Permission Matrix
+
+The actual matrix, for the six Phase-1-scoped agents (`runtime-agents.md`'s "Current Phase Scope") — an initial, illustrative allocation grounded in what's already described piecemeal elsewhere in this project (the Market Research Agent's tool set in `runtime-agents.md` §3.1/§3.2, the Research-Agent/Production-DB example above), meant to be refined as real tooling is built, not treated as permanently final:
+
+| Agent | Web Search | Browser | Knowledge/Doc Store (read) | Doc Store (write) | Git (read) | Git (write) | Filesystem | Database (read) | Database (write) | Cloud/Infra deploy |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Executive Orchestrator | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Research | ✓ | ✓ | ✓ | ✓ (research reports only) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Product | ✓ | ✓ | ✓ | ✓ (product specs only) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Engineering | ✓ | ✓ | ✓ | ✓ (technical docs) | ✓ | ✓ | ✓ | ✓ | ⚠ approval required | ⚠ approval required |
+| QA | ✗ | ✓ | ✓ | ✓ (test reports) | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| Security | ✓ | ✗ | ✓ | ✓ (findings/reports) | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
+
+`✓` = granted by default · `✗` = never granted to this role · `⚠` = requires the Human Approval gate (§8.7) every time, regardless of role — no agent gets deploy or destructive-DB access unconditionally, per this project's own non-negotiables.
+
+Rationale for the shape, not just the values: the Executive Orchestrator coordinates rather than performs (`orchestration.md` §4.1), so it gets read access to shared knowledge for classification but no execution tools of its own — those belong to the agent it dispatches to. Research/Product are read-heavy with a narrow, department-scoped write. Engineering and QA both touch code, but only Engineering writes it; QA reads and runs it without committing. Security gets broad read access for audit (mirroring this project's own `security` dev-loop agent, which audits and never fixes) and no write access anywhere.
+
+### 8.3.2 `Permission` and `ToolPolicy` — entity reference
+
+`Permission` (a data-access grant, distinct from tool access):
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | string | yes | Unique identifier |
+| `grantee` | agent role or agent instance ID | yes | Who this grant applies to |
+| `resource_type` | enum: `Knowledge`, `DocumentStore`, `Database`, `Filesystem`, `Git`, `Infrastructure` | yes | What kind of resource |
+| `scope` | enum: `READ`, `WRITE` | yes | What operation is allowed |
+| `resource_scope` | string (e.g. a department, a document category) | no | Narrows the grant below the resource type, matching the "research reports only" / "product specs only" style narrowing used in the matrix above |
+
+`ToolPolicy` (a tool-execution decision, evaluated by the Tool Gateway, §8.6, before a tool call runs):
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | string | yes | Unique identifier |
+| `agent_role` | string | yes | Which agent role this policy applies to |
+| `tool_id` | string (or omitted to match all tools for this role) | no | Which tool this governs |
+| `decision` | enum: `ALLOW`, `DENY`, `REQUIRE_APPROVAL` | yes | The gate's decision for this tool/role pair |
+| `approval_config` | object (title, description, severity, timeout) | required if `decision = REQUIRE_APPROVAL` | Feeds the `ApprovalRequest` created when this policy fires (§8.7.1) |
+
+> **OpenClaw grounding note, not a final decision.** If `ToolPolicy` enforcement is ever implemented against OpenClaw's `plugin-sdk` rather than a fully independent Tool Gateway, ground the `REQUIRE_APPROVAL` path on OpenClaw's documented `before_tool_call` hook's `requireApproval` field (confirmed, typed, available to any plugin) — not on `contracts.trustedToolPolicies` (its approval-outcome support is unconfirmed, and one third-party plugin's real-world experience contradicts the docs on whether it's even available to non-bundled plugins). Full detail: `.claude/agent-memory/researcher/openclaw_trusted_tool_policies.md`. This is a technical grounding note for whoever implements the gateway, not a decision made here.
 
 ## 8.4 Data Permissions
 
@@ -173,6 +214,21 @@ DevOps Agent → "Deploy to Production" → Risk Evaluation → ⚠ Human Approv
 ```
 
 If rejected, the action doesn't execute — full stop, no fallback path. The agent can propose an action, but a human retains explicit authorization authority over anything potentially damaging or sensitive. See `workflow.md` §5.8 for where this sits inside workflow execution specifically.
+
+### 8.7.1 `ApprovalRequest` — entity reference
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | string | yes | Unique identifier |
+| `task_id` | string | yes | The task whose execution is paused pending this decision (moves the task to `PENDING_APPROVAL`, `orchestration.md` §4.4.2) |
+| `requested_by` | agent instance ID | yes | Which agent's tool request triggered this |
+| `action` | string | yes | The specific action awaiting approval (e.g. "Deploy to Production") |
+| `risk_level` | enum: `info`, `warning`, `critical` | yes | Drives how the request is surfaced (dashboard urgency, notification) |
+| `status` | enum: `PENDING`, `APPROVED`, `REJECTED`, `TIMED_OUT` | yes | Current disposition |
+| `requested_at` / `resolved_at` | timestamp | `resolved_at` only once resolved | When raised / when a human acted on it |
+| `resolved_by` | user ID | only once resolved | Which human approved or rejected it |
+| `reason` | string | no | Optional human-supplied rationale, especially useful on rejection |
+| `timeout_ms` | number | no | If set and no human response arrives in time, `status` becomes `TIMED_OUT` and the request is treated as a rejection (fail closed, not fail open) |
 
 ## 8.8 Secret Management
 

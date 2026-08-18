@@ -147,21 +147,23 @@ A central directory of which agents exist and what they can do — the fleet's d
 
 > **Open question — Operations.** The spec's Purpose section (§1) lists **Operations** as one of the fleet's organizational roles, but Operations doesn't appear in the Agent Registry table above (the registry table in the source spec omits it too — this isn't a transcription error on our end). Either Operations was intentionally folded into DevOps, or it was dropped between drafts. Unresolved — route to `architecture-review` before this is treated as settled, don't silently pick one interpretation.
 
-For each agent, the registry stores:
+For each agent, the registry stores — this is the `Agent` entity's field reference:
 
-```
-Agent ID
-Role
-Department
-Capabilities
-Tools
-Permissions
-Model
-Status
-Concurrency
-Health
-Version
-```
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| Agent ID | string | yes | Unique identifier for this instance (e.g. `market_research-01`) |
+| Role | string | yes | The organizational role this instance represents (e.g. "Market Research Agent") |
+| Department | string | yes | Owning department, from the registry (§3.3) |
+| Capabilities | string[] | yes | What this role is competent to do |
+| Tools | string[] | yes | Which tools this instance may invoke — enforced via the Tool Permission Matrix, not just declared here (`security-architecture.md` §8.3.1) |
+| Permissions | `Permission`[] (`security-architecture.md` §8.3.2) | yes | Data-access grants for this instance |
+| Model | string | yes | Which model backs this instance |
+| Status | see note below | yes | — |
+| Concurrency | number | yes | Max simultaneous tasks this instance will accept |
+| Health | `AgentStatus` — intended to be the eleven-state enum in §3.4 | yes | — |
+| Version | string | yes | Agent definition version, for tracking behavior changes over time |
+
+> **`Status` vs. `Health` is underspecified, flagging rather than silently resolving it.** The worked example below shows `Status: RUNNING` and `Health: HEALTHY` — but `RUNNING` is one of §3.4's eleven `AgentStatus` values, and `HEALTHY` doesn't appear in that list at all. So either `Status` and `Health` are meant to be the same field shown twice under different labels (in which case one of the two field names should be dropped), or `Health` is actually meant to be a coarser binary/tri-state readout (`HEALTHY` / `DEGRADED` / `UNHEALTHY`, say) derived from the finer-grained `AgentStatus` in `Status` — the source material doesn't say which. Not resolved here; worth a quick `architect` pass before this becomes a real `AgentStatus` type in code.
 
 **Example entry:**
 
