@@ -34,3 +34,13 @@ Confirmed open (as of that date, unfixed — audit only, no changes made):
 - **No policy-denial event.** §8.3.2 now formalizes default-`DENY`; observability §10.4 has no `tool.denied`/`policy.denied`, so a denial is indistinguishable from `tool.failed`.
 
 **New High introduced by the fix** — see [[tool-permission-matrix-gaps]]'s precedence-floor entry.
+
+## Re-check 2026-08-18 (commit 0d5de5b) — all 8 original findings now closed
+
+All five residuals above were addressed with real mechanism, not prose: `designated_approver` added to `approval_config`; `params_snapshot` comparison scoped to agent-supplied params with Gateway-injected fields enumerated and excluded (resolves the §8.8 livelock without reopening finding 3); principal-split pointers added at both §8.2 and api.md §11.1.1 where the token scheme actually gets designed; `Reassign` pinned to `Retry`'s eligibility in *both* orchestration §4.6 and workflow §5.6; `tool.denied` added to observability §10.4. No new Critical/High — the CLAUDE.md review loop's exit condition is met as of this commit.
+
+**New Mediums opened by this same fix — check these before the gate is implemented:**
+- **Rejection isn't durable (workflow.md §5.7).** The new DEAD_LETTERED paragraph offers "restart just that branch as a new task" as generic routing-around, which for a `Policy rejection` dead-letter is a re-request path around a human "no" — in tension with §5.6 (same commit, adjacent section, excludes Retry/Reassign for exactly that case) and §8.7's "full stop, no fallback path." Not a gate *bypass*: the new task raises a fresh `tool_call_id` → fresh `ApprovalRequest`, so nothing auto-executes. The harm is approval fatigue / approver-shopping with no "previously rejected" signal and no re-request limit.
+- **`designated_approver` has no stated behavior when `approval_config` omits it.** It's `required: yes` on `ApprovalRequest` but unmarked inside `approval_config`; the natural implementer fallback ("any user with the approver role") is precisely the approver-shopping the fix targeted. Also, its §8.7.1 row lacks the explicit "**never** agent-supplied" phrase that makes `risk_level`'s row airtight — the pin lives only in §8.3.2's description column.
+
+**Low:** `params_snapshot`'s exclusion is field-*name*-scoped. If §8.8 injection is fill-if-missing rather than always-overwrite, an agent-supplied param colliding with an injected field name is both agent-controlled and exempt from the post-approval comparison. Needs: injected field set fixed per tool, always overwrites, colliding agent-supplied param rejected.

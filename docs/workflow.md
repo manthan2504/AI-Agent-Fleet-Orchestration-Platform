@@ -149,7 +149,9 @@ Workflow
 
 Particularly valuable for long-running workflows, where restarting from scratch would waste already-completed work.
 
-**A task that reached `DEAD_LETTERED` is not "interrupted" in the sense this section means.** `Task C — interrupted` above implies a task that can still make progress once resumed; a `DEAD_LETTERED` task (`orchestration.md` §4.4.2/§4.6 — retry budget exhausted, or a `Permanent`/`Policy rejection` failure that was never retry-eligible in the first place) is terminal. Resuming a workflow past one of those means routing around it (skip, escalate, or restart just that branch as a new task), not resuming the same task instance — this section's mechanism is for genuinely paused/interrupted work, not a way to route around a dead-lettered task's own terminal status.
+**A task that reached `DEAD_LETTERED` is not "interrupted" in the sense this section means.** `Task C — interrupted` above implies a task that can still make progress once resumed; a `DEAD_LETTERED` task (`orchestration.md` §4.4.2/§4.6 — retry budget exhausted, or a `Permanent`/`Policy rejection` failure that was never retry-eligible in the first place) is terminal. Resuming a workflow past a `Permanent` dead-letter means routing around it — skip, escalate, or restart just that branch as a new task — not resuming the same task instance.
+
+**A `Policy rejection` dead-letter is narrower still: "restart as a new task" is explicitly not an option for it, the same way §5.6 already excludes it from `Retry`/`Reassign`.** A fresh task raises a fresh `tool_call_id` and a fresh `ApprovalRequest` — it doesn't auto-execute anything a human hasn't seen — but re-requesting the identical rejected action under a new task ID is a re-ask, not a resumption, and nothing here currently limits how many times that can happen or signals to the next approver that this was already said no to once. Available options for this specific case are `Escalate` or `Stop` only, matching §5.6/§8.7's "full stop, no fallback path."
 
 ## 5.8 Human Approval
 
