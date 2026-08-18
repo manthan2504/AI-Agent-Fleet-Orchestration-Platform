@@ -28,7 +28,7 @@ Each department does its own work, in its own context, retrieving shared knowled
 
 ## Critical Correction — Non-Negotiable
 
-**The runtime is OpenClaw, not the OpenAI Agents SDK.** Older reference material in this project may say otherwise — it's wrong, corrected in `docs/runtime.md` §7.1. OpenClaw is a self-hosted, model-agnostic automation runtime (skills, event subscriptions, an action loop, its own plugin-sdk) — architecturally different from an SDK built around manager/handoff multi-agent primitives. **Never assume OpenClaw provides agents/tools/handoffs/guardrails/sessions/runners the way an SDK would.** Verify via the `researcher` agent before building anything that depends on it.
+**The runtime is OpenClaw, not the OpenAI Agents SDK.** Older reference material in this project may say otherwise — it's wrong, corrected in `docs/runtime.md` §7.1. OpenClaw is a self-hosted, model-agnostic automation runtime (skills, event subscriptions, an agent loop, its own plugin-sdk) — architecturally different from an SDK built around manager/handoff multi-agent primitives. **Never assume OpenClaw provides agents/tools/handoffs/guardrails/sessions/runners the way an SDK would.** `docs/runtime.md` §7.1 now has a verified findings pass (2026-08-18) confirming some of this and correcting other parts (skills are prompt-injected, not WASM-sandboxed; OpenClaw's own term is "agent loop," not "action loop") — read that before assuming anything further.
 
 ## Repository Map
 
