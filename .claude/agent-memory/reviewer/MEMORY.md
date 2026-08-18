@@ -1,0 +1,2 @@
+- [Docs-only change review process](docs_review_process.md) — how to review docs-only commits in this repo (no code/tests exist yet); checks to run.
+- [Section cross-reference conventions](docs_cross_references.md) — recurring pattern: qualify section refs with filename outside the source doc.

@@ -128,7 +128,7 @@ QUEUED
    ↓
 ASSIGNED
    ↓
-RUNNING ⇄ PENDING_APPROVAL          (a tool call inside the task needs human sign-off — §8.7)
+RUNNING ⇄ PENDING_APPROVAL          (a tool call inside the task needs human sign-off — security-architecture.md §8.7)
    │           │
    │           └──→ FAILED   (rejected — a Policy rejection per §4.6, not a cancellation)
    │

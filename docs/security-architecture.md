@@ -228,7 +228,7 @@ If rejected, the action doesn't execute — full stop, no fallback path. The age
 | `requested_at` / `resolved_at` | timestamp | `resolved_at` only once resolved | When raised / when a human acted on it |
 | `resolved_by` | user ID | only once resolved | Which human approved or rejected it |
 | `reason` | string | no | Optional human-supplied rationale, especially useful on rejection |
-| `timeout_ms` | number | no | If set and no human response arrives in time, `status` becomes `TIMED_OUT` and the request is treated as a rejection (fail closed, not fail open) |
+| `timeout_ms` | number | no | If set and no human response arrives in time, `status` becomes `TIMED_OUT` and the request is treated as a rejection (fail closed, not fail open) — the task named in `task_id` moves to `FAILED` with a `Policy rejection` error (`orchestration.md` §4.4.2/§4.6), the same target as an explicit `REJECTED` |
 
 ## 8.8 Secret Management
 

@@ -132,6 +132,8 @@ Cancellation Requested
 Workflow STOPPED
 ```
 
+`STOPPED` is the workflow's own terminal state, distinct from `orchestration.md` §4.4.2's task-level `CANCELLED` — a workflow stopping is what causes its still-running child tasks to move to `CANCELLED` individually, not a renaming of the same state at a different scope. A completed child task (like Research above) keeps its `COMPLETED` status; only tasks still in flight when cancellation lands (like Engineering above) move to `CANCELLED`.
+
 **Resumption:** continue a previously paused or interrupted workflow from the appropriate point, rather than restarting from the beginning.
 
 ```
