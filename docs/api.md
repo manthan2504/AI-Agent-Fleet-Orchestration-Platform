@@ -43,7 +43,7 @@ Fleet-wide conventions every endpoint below follows, so they don't need repeatin
 
 **Filtering.** List endpoints accept `?status=`, `?department=`, and `?created_after=`/`?created_before=` where the underlying resource has those fields (e.g. `GET /tasks` isn't listed as a bare endpoint above but if added, filters by `TaskStatus`, department, timestamps — same fields the entity already carries, `orchestration.md` §4.4.3).
 
-**Idempotency.** `POST /tasks` and the approval endpoints (`POST /approvals/{id}/approve`/`reject`) accept an `Idempotency-Key` header. A replayed request with a previously-seen key returns the original response (same status code, same body) instead of creating a second task or double-resolving an approval — necessary because a client retrying a timed-out request must not accidentally submit the same task twice or approve-then-approve-again.
+**Idempotency.** `POST /tasks` and the approval endpoints (`POST /approvals/{id}/approve`/`reject`) accept an `Idempotency-Key` header. A replayed request with a previously-seen key returns the original response (same status code, same body) instead of creating a second task or double-resolving an approval — necessary because a client retrying a timed-out request must not accidentally submit the same task twice or approve-then-approve-again. **The key is scoped to `(caller identity, endpoint, resource id)`, never to the header value alone** — a security review flagged that an unscoped cache keyed only on the header string would let a key previously used on one approval's `approve` call get replayed against a *different* approval's `reject` call and return a stale cached `200`, silently skipping the second decision entirely. A cache hit still re-runs authentication/authorization before returning the cached body — a revoked token doesn't get to replay its way to a cached success. Idempotency keys expire after 24h.
 
 **Error shape.** Every non-2xx response returns the same envelope:
 
@@ -155,6 +155,8 @@ Fleet Cost
 Managing human-approval requests for high-risk actions.
 
 ```
+GET  /approvals
+GET  /approvals/{id}
 POST /approvals/{id}/approve
 POST /approvals/{id}/reject
 ```
@@ -165,7 +167,9 @@ Agent → Tool Request → Risk Evaluation → Approval Created → Human → Ap
 
 This is the API surface for the approval gate already defined in `security-architecture.md` §8.7 and `workflow.md` §5.8 — the mechanism doesn't change here, this just gives a dashboard or another authorized interface a concrete way to act on it. Request/response fields match the `ApprovalRequest` entity (`security-architecture.md` §8.7.1).
 
-**Status codes:** `200` + the updated `ApprovalRequest` on success. `404` if the approval ID doesn't exist. `409` if it's already resolved (`status` is no longer `PENDING`) — approving or rejecting an already-resolved request is a conflict, not silently accepted or repeated; this is also where the `Idempotency-Key` convention (§11.1.1) matters, so a genuine retry of the *same* approve call doesn't collide with this check. `403` if the caller isn't authorized to resolve this specific approval (e.g. not the designated approver).
+`GET /approvals`/`GET /approvals/{id}` were missing from the first version of this section — without a read path there was no documented way to enumerate pending approvals for a dashboard, or audit resolved ones after the fact. `GET /approvals` defaults to `?status=PENDING`, filterable by `?status=`/`?department=` per §11.1.1; `GET /approvals/{id}` returns one request regardless of status.
+
+**Status codes:** `GET /approvals` → `200`, paginated. `GET /approvals/{id}` → `200` on success, `404` if the ID doesn't exist. `POST .../approve`/`reject` → `200` + the updated `ApprovalRequest` on success, `404` if the approval ID doesn't exist, `409` if it's already resolved (`status` is no longer `PENDING`) — approving or rejecting an already-resolved request is a conflict, not silently accepted or repeated; this is also where the `Idempotency-Key` convention (§11.1.1) matters, so a genuine retry of the *same* approve call doesn't collide with this check. `403` if the caller isn't the request's `designated_approver` (`security-architecture.md` §8.7.1) — that field is what this check evaluates against; without it, this `403` had nothing to check.
 
 ## 11.8 Example Task API
 

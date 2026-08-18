@@ -130,13 +130,17 @@ ASSIGNED
    ↓
 RUNNING ⇄ PENDING_APPROVAL          (a tool call inside the task needs human sign-off — security-architecture.md §8.7)
    │           │
-   │           └──→ FAILED   (rejected — a Policy rejection per §4.6, not a cancellation)
+   │           └──→ FAILED (Policy rejection) ──→ DEAD_LETTERED
+   │                      [rejected or timed out — skips RETRY entirely, see note below;
+   │                       "full stop, no fallback path" per security-architecture.md §8.7]
    │
    ├──→ COMPLETED
    ├──→ PARTIALLY_COMPLETED          (parent task only, mixed child outcomes — §4.4.4)
    ├──→ TIMED_OUT ──┐
-   └──→ FAILED ──────┼──→ RETRY ──→ RUNNING
-                      └──→ DEAD_LETTERED   (retry budget exhausted or explicitly non-retryable)
+   └──→ FAILED ──────┼──→ RETRY ──→ RUNNING     (only for retry-eligible failure types, §4.6)
+                      └──→ DEAD_LETTERED   (retry budget exhausted, or the failure type is
+                                             non-retryable by definition — Permanent or
+                                             Policy rejection, §4.6)
 
 CANCELLED can be reached from any non-terminal state above
 (CREATED, QUEUED, ASSIGNED, RUNNING, or PENDING_APPROVAL) — it is a deliberate
@@ -144,16 +148,18 @@ stop initiated by a human, the orchestrator, or a parent task, not a failure
 and not the same thing as an approval being rejected.
 ```
 
+**A rejected or timed-out approval is never retry-eligible.** This was a real inconsistency in an earlier version of this section: routing rejection to `FAILED` without also excluding it from `FAILED`'s general `RETRY` path would have meant a human explicitly saying "no" to, say, a production deploy could still re-enter `RETRY → RUNNING` and re-raise the same tool call — silently contradicting `security-architecture.md` §8.7's "If rejected, the action doesn't execute — full stop, no fallback path." Fixed: a `Policy rejection` arising from an approval rejection or an approval timeout moves straight to `DEAD_LETTERED`, the same way a `Permanent` failure does, and never passes through `RETRY`. This is not a new policy — it's making the lifecycle diagram actually match the approval-gate guarantee `security-architecture.md` §8.7 already stated.
+
 | State | Meaning |
 |---|---|
 | `CREATED` | Task has been created, not yet queued |
 | `QUEUED` | Waiting in the Task Queue (§4.4.1) for an available agent |
 | `ASSIGNED` | A specific agent instance has been assigned, not yet started |
 | `RUNNING` | Actively executing |
-| `PENDING_APPROVAL` | Execution is paused because a tool call inside this task requires human approval before it can continue (`security-architecture.md` §8.7); resumes to `RUNNING` on approval, moves to `FAILED` (`Policy rejection`, §4.6) on rejection |
+| `PENDING_APPROVAL` | Execution is paused because a tool call inside this task requires human approval before it can continue (`security-architecture.md` §8.7); resumes to `RUNNING` on approval, moves to `FAILED` (`Policy rejection`, §4.6) → immediately `DEAD_LETTERED` on rejection or timeout — never `RETRY` |
 | `COMPLETED` | Finished successfully |
 | `PARTIALLY_COMPLETED` | A parent task's child tasks (§4.4.4) finished with a mix of outcomes — some `COMPLETED`, some `FAILED`/`CANCELLED` — and the parent is returning a best-available result rather than treating the whole task as failed |
-| `FAILED` | Finished unsuccessfully; classified per §4.6 (including a rejected approval, as `Policy rejection`) and either retried or escalated |
+| `FAILED` | Finished unsuccessfully; classified per §4.6 and either retried or escalated straight to `DEAD_LETTERED` depending on the failure type's retry eligibility |
 | `RETRY` | Being re-attempted after a `FAILED` or `TIMED_OUT` classification, per the agent's retry policy (`runtime-agents.md` §3.2) |
 | `TIMED_OUT` | Exceeded its configured `Timeout` (§4.4.3) before finishing |
 | `CANCELLED` | Stopped intentionally before completion — by a human, the orchestrator, or a parent task's own cancellation — not a failure, and not the outcome of a rejected approval (that's `FAILED`, above) |
@@ -255,20 +261,20 @@ Agent → Task → FAILURE → Retry Policy
                             └── Human Intervention
 ```
 
-| Failure type | Meaning |
-|---|---|
-| Transient | Temporary problem — likely retry |
-| Permanent | Cannot succeed as currently configured — may need reassignment or escalation |
-| Tool failure | The external tool failed |
-| Model failure | The LLM/model request failed |
-| Policy rejection | Blocked by a policy or guardrail |
-| Timeout | Took longer than the allowed execution time |
-| Resource exhaustion | Required resources weren't available |
-| Invalid output | Output didn't meet the expected format/requirements |
+| Failure type | Meaning | Retry-eligible? |
+|---|---|---|
+| Transient | Temporary problem — likely retry | Yes |
+| Permanent | Cannot succeed as currently configured — may need reassignment or escalation | No — straight to `DEAD_LETTERED` |
+| Tool failure | The external tool failed | Yes |
+| Model failure | The LLM/model request failed | Yes |
+| Policy rejection | Blocked by a policy or guardrail, **including an explicitly rejected or timed-out human approval** (§4.4.2) | **No — straight to `DEAD_LETTERED`.** A policy or human decision is never silently re-attempted; retrying past it without addressing the underlying reason would defeat the point of having the gate. |
+| Timeout | Took longer than the allowed execution time | Yes |
+| Resource exhaustion | Required resources weren't available | Yes |
+| Invalid output | Output didn't meet the expected format/requirements | Yes |
 
 This is what lets the platform decide what happens next instead of treating every failure identically — a policy rejection and a transient network blip are not the same event and shouldn't trigger the same response. Retry/timeout policy defaults are set per-agent in the agent definition (`runtime-agents.md` §3.2); this is where those defaults actually get exercised at the task level.
 
-In terms of the task lifecycle (§4.4.2): a `Timeout` failure moves the task to `TIMED_OUT`; every other failure type here moves it to `FAILED`. Both are eligible for the `RETRY` transition unless the failure is classified `Permanent` or the retry budget is already exhausted, in which case the task moves to `DEAD_LETTERED` instead of retrying indefinitely.
+In terms of the task lifecycle (§4.4.2): a `Timeout` failure moves the task to `TIMED_OUT`; every other failure type here moves it to `FAILED`. Retry-eligible failures get the `RETRY` transition until the retry budget is exhausted, at which point they too move to `DEAD_LETTERED`; the two failure types marked not retry-eligible above skip `RETRY` entirely and go straight to `DEAD_LETTERED` on first occurrence.
 
 ## 4.7 Agent-to-Agent Collaboration
 

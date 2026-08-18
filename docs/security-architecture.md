@@ -90,20 +90,22 @@ A system prompt is a request to the model, not a control. The actual Tool Gatewa
 
 ### 8.3.1 Tool Permission Matrix
 
-The actual matrix, for the six Phase-1-scoped agents (`runtime-agents.md`'s "Current Phase Scope") — an initial, illustrative allocation grounded in what's already described piecemeal elsewhere in this project (the Market Research Agent's tool set in `runtime-agents.md` §3.1/§3.2, the Research-Agent/Production-DB example above), meant to be refined as real tooling is built, not treated as permanently final:
+The actual matrix, for the six Phase-1-scoped agents (`runtime-agents.md`'s "Current Phase Scope") — an initial, illustrative allocation grounded in what's already described piecemeal elsewhere in this project (the Market Research Agent's tool set in `runtime-agents.md` §3.1/§3.2, the Research-Agent/Production-DB example above), meant to be refined as real tooling is built, not treated as permanently final. A security review of the first version of this matrix (2026-08-18) found that a single undifferentiated "Filesystem" column understated risk — filesystem write access over a repo working tree or a Git hook is functionally equivalent to Git write, so it's now split read/write like Git is:
 
-| Agent | Web Search | Browser | Knowledge/Doc Store (read) | Doc Store (write) | Git (read) | Git (write) | Filesystem | Database (read) | Database (write) | Cloud/Infra deploy |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Executive Orchestrator | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Research | ✓ | ✓ | ✓ | ✓ (research reports only) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Product | ✓ | ✓ | ✓ | ✓ (product specs only) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Engineering | ✓ | ✓ | ✓ | ✓ (technical docs) | ✓ | ✓ | ✓ | ✓ | ⚠ approval required | ⚠ approval required |
-| QA | ✗ | ✓ | ✓ | ✓ (test reports) | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
-| Security | ✓ | ✗ | ✓ | ✓ (findings/reports) | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| Agent | Web Search | Browser | Knowledge/Doc Store (read) | Doc Store (write) | Git (read) | Git (write) | Filesystem (read) | Filesystem (write) | Database (read) | Database (write) | Cloud/Infra deploy |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Executive Orchestrator | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Research | ✓ | ✓ | ✓ | ✓ (research reports only) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Product | ✓ | ✓ | ✓ | ✓ (product specs only) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Engineering | ✓ | ✓ | ✓ | ✓ (technical docs) | ✓ | ✓ | ✓ | ✓ | ✓ (scoped¹) | ⚠ approval required | ⚠ approval required |
+| QA | ✗ | ✓ | ✓ | ✓ (test reports) | ✓ | ✗ | ✓ | ✗ | ✓ (scoped¹, test data only) | ✗ | ✗ |
+| Security | ✓ | ✗ | ✓ | ✓ (findings/reports only — see rationale) | ✓ | ✗ | ✓ | ✗ | ✓ (scoped¹) | ✗ | ✗ |
 
-`✓` = granted by default · `✗` = never granted to this role · `⚠` = requires the Human Approval gate (§8.7) every time, regardless of role — no agent gets deploy or destructive-DB access unconditionally, per this project's own non-negotiables.
+`✓` = granted by default · `✗` = never granted to this role · `⚠` = requires the Human Approval gate (§8.7) every time, regardless of role — no agent gets deploy or destructive-DB access unconditionally, per this project's own non-negotiables. ¹ "scoped" means narrowed via `Permission.resource_scope` (§8.3.2) — e.g. non-production schemas only, never the production database the Research-Agent example above is warning about; an unscoped `Database (read)` grant would defeat that example's whole point.
 
-Rationale for the shape, not just the values: the Executive Orchestrator coordinates rather than performs (`orchestration.md` §4.1), so it gets read access to shared knowledge for classification but no execution tools of its own — those belong to the agent it dispatches to. Research/Product are read-heavy with a narrow, department-scoped write. Engineering and QA both touch code, but only Engineering writes it; QA reads and runs it without committing. Security gets broad read access for audit (mirroring this project's own `security` dev-loop agent, which audits and never fixes) and no write access anywhere.
+Rationale for the shape, not just the values: the Executive Orchestrator coordinates rather than performs (`orchestration.md` §4.1), so it gets read access to shared knowledge for classification but no execution tools of its own — those belong to the agent it dispatches to. Research/Product are read-heavy with a narrow, department-scoped write. Engineering and QA both touch code, but only Engineering writes it; QA reads and runs it without committing, which is exactly why QA's Filesystem grant stops at read — a QA agent with filesystem *write* could modify the code it's supposed to be independently testing, defeating the "doesn't commit" boundary as surely as Git write would. Security gets broad read access for audit (mirroring this project's own `security` dev-loop agent, which audits and never fixes) with one narrow, explicit exception: it can write its own findings/reports, and nothing else — not "no write access anywhere," which the matrix's Doc Store cell would otherwise contradict.
+
+**Per-cell grants don't compose safely — this matrix can't show that on its own.** Research/Product hold Web Search + Browser (attacker-reachable external content) and Doc Store write; Engineering reads the Doc Store and holds Git write. A malicious or manipulated web page can ride through a research report into Engineering's context and out through a commit — every individual cell above is still correctly scoped, but the chain isn't something a per-agent table can catch. That has to be a workflow-level control (content provenance/tagging as it crosses the Research → Engineering boundary in `orchestration.md` §4.7's collaboration-request path, or an execution guardrail per §8.5's rail types) — flagging this as a real gap the matrix format has, not resolving it here.
 
 ### 8.3.2 `Permission` and `ToolPolicy` — entity reference
 
@@ -127,7 +129,13 @@ Rationale for the shape, not just the values: the Executive Orchestrator coordin
 | `decision` | enum: `ALLOW`, `DENY`, `REQUIRE_APPROVAL` | yes | The gate's decision for this tool/role pair |
 | `approval_config` | object (title, description, severity, timeout) | required if `decision = REQUIRE_APPROVAL` | Feeds the `ApprovalRequest` created when this policy fires (§8.7.1) |
 
-> **OpenClaw grounding note, not a final decision.** If `ToolPolicy` enforcement is ever implemented against OpenClaw's `plugin-sdk` rather than a fully independent Tool Gateway, ground the `REQUIRE_APPROVAL` path on OpenClaw's documented `before_tool_call` hook's `requireApproval` field (confirmed, typed, available to any plugin) — not on `contracts.trustedToolPolicies` (its approval-outcome support is unconfirmed, and one third-party plugin's real-world experience contradicts the docs on whether it's even available to non-bundled plugins). Full detail: `.claude/agent-memory/researcher/openclaw_trusted_tool_policies.md`. This is a technical grounding note for whoever implements the gateway, not a decision made here.
+**Evaluation order and default, stated explicitly (a security review flagged both as missing — an unstated precedence or default is itself a bypass, since whatever an implementer happens to build becomes the real policy):**
+- **Most-specific-wins.** A row with a matching `tool_id` always takes precedence over a role-wide row (`tool_id` omitted) for the same `agent_role`, regardless of which was created first or last. Two rows with the *same* specificity for the same role/tool pair is a configuration error, not a case the Gateway should silently resolve — reject it at write time.
+- **Most-restrictive-wins is deliberately not the rule** — specificity is. A tool-specific `ALLOW` legitimately overrides a role-wide `REQUIRE_APPROVAL`, e.g. an otherwise-gated role explicitly cleared for one specific low-risk tool. What must never happen is a role-wide row silently shadowing a tool-specific one — that direction always loses to specificity.
+- **Default is `DENY`.** If no `ToolPolicy` row matches an `(agent_role, tool_id)` pair at all, the Gateway denies the call. This project already commits to this posture generally (§8.3's whole point); it has to be written down for this specific entity too, not just implied.
+- **The Tool Permission Matrix (§8.3.1) is the source that compiles into `ToolPolicy` rows**, not a parallel description of the same thing maintained by hand. `Agent.Tools` (`runtime-agents.md`'s registry field) is validated against the compiled policy at agent registration, not treated as an independent grant — if `Agent.Tools` lists something the matrix doesn't grant that role, registration fails closed (rejected), it does not silently widen access to match the declared list. This is what makes `runtime-agents.md`'s claim that tools are "enforced via the Tool Permission Matrix, not just declared here" actually true rather than aspirational.
+
+> **OpenClaw grounding note, not a final decision.** If `ToolPolicy` enforcement is ever implemented against OpenClaw's `plugin-sdk` rather than a fully independent Tool Gateway, ground the `REQUIRE_APPROVAL` path on OpenClaw's documented `before_tool_call` hook's `requireApproval` field (confirmed, typed, available to any plugin) — not on `contracts.trustedToolPolicies` (its approval-outcome support is unconfirmed, and one third-party plugin's real-world experience contradicts the docs on whether it's even available to non-bundled plugins). Full detail: `.claude/agent-memory/researcher/openclaw_trusted_tool_policies.md`. Two things that note undersold, per a subsequent security review of it: (1) `requireApproval.allowedDecisions` can include `"allow-always"` — one human click converts a "every time" gate into a standing grant, so if this path is used, `allowedDecisions` must be constrained to exclude `allow-always` for anything this matrix marks `⚠`, not left at whatever OpenClaw's default offers; (2) `onResolution` fires on `"cancelled"` as well as `"timeout"` — the fail-closed handling described in §8.7.1 has to cover both, not just the timeout case. And structurally: an independent Tool Gateway (§8.6) — outside the agent's own runtime process — should be the default design, with an in-process `before_tool_call` hook treated as a constrained fallback if the independent gateway isn't available, not as an equal alternative; a control living inside the same process it governs is a weaker boundary than one outside it. This is still a technical grounding note for whoever implements the gateway, not a decision made here.
 
 ## 8.4 Data Permissions
 
@@ -204,7 +212,7 @@ Agent → Tool Request → Risk Evaluation → Human Approval Required
 **Example:**
 
 ```
-DevOps Agent → "Deploy to Production" → Risk Evaluation → ⚠ Human Approval Required
+Engineering Agent → "Deploy to Production" → Risk Evaluation → ⚠ Human Approval Required
                                                                   ↓
                                                                Manager
                                                             ┌────┴────┐
@@ -213,22 +221,32 @@ DevOps Agent → "Deploy to Production" → Risk Evaluation → ⚠ Human Approv
                                                         Execution
 ```
 
+(This example uses the Engineering Agent, matching §8.3.1's matrix — deploy is one of the two `⚠` cells assigned to Engineering, not DevOps, which is future scope per `runtime-agents.md`'s Current Phase Scope.)
+
 If rejected, the action doesn't execute — full stop, no fallback path. The agent can propose an action, but a human retains explicit authorization authority over anything potentially damaging or sensitive. See `workflow.md` §5.8 for where this sits inside workflow execution specifically.
 
 ### 8.7.1 `ApprovalRequest` — entity reference
+
+A security review (2026-08-18) found the first version of this entity granted approval to a free-text description rather than to a specific, checkable tool call, and left the human/agent principal boundary unstated. Both fixed below, plus the other findings from that pass.
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `id` | string | yes | Unique identifier |
 | `task_id` | string | yes | The task whose execution is paused pending this decision (moves the task to `PENDING_APPROVAL`, `orchestration.md` §4.4.2) |
+| `tool_call_id` | string | yes | The specific tool invocation this approval covers — **not** the whole task. A task that raises two gated calls gets two `ApprovalRequest`s; approving one never resumes the other. |
+| `tool_id` | string | yes | Which tool `tool_call_id` is calling — lets the approver (and the Gateway, on resolution) verify this request matches an actual `ToolPolicy` row marked `REQUIRE_APPROVAL` (§8.3.2), rather than trusting `action`'s prose alone |
+| `params_snapshot` | object or hash of the tool call's parameters, captured at request time | yes | What the human is actually approving. The Gateway must re-check the live call's parameters against this snapshot at execution time and re-request approval on any mismatch — a hook or policy that rewrites params after approval was granted must not silently execute against different arguments than what was shown to the human |
 | `requested_by` | agent instance ID | yes | Which agent's tool request triggered this |
-| `action` | string | yes | The specific action awaiting approval (e.g. "Deploy to Production") |
-| `risk_level` | enum: `info`, `warning`, `critical` | yes | Drives how the request is surfaced (dashboard urgency, notification) |
-| `status` | enum: `PENDING`, `APPROVED`, `REJECTED`, `TIMED_OUT` | yes | Current disposition |
+| `action` | string | yes | A human-readable label (e.g. "Deploy to Production") — describes `tool_id`/`params_snapshot` for the approver's benefit, is not itself the thing being authorized, and must not be the only field an approval UI renders |
+| `risk_level` | enum: `info`, `warning`, `critical` | yes | Set from the matching `ToolPolicy.approval_config` (§8.3.2) — **never** agent-supplied. An agent proposing its own risk level for the action it's requesting is the approval gate auditing itself. |
+| `status` | enum: `PENDING`, `APPROVED`, `REJECTED`, `TIMED_OUT` | yes | Current disposition. Immutable once non-`PENDING` — no path, API or otherwise, may transition a resolved request to a different resolved status (see `api.md` §11.7's `409` behavior, which is the API-layer expression of this same invariant, not the only place it holds) |
 | `requested_at` / `resolved_at` | timestamp | `resolved_at` only once resolved | When raised / when a human acted on it |
-| `resolved_by` | user ID | only once resolved | Which human approved or rejected it |
+| `designated_approver` | user ID or role (e.g. "any user with the `approver` role for this department") | yes | Who is authorized to resolve this specific request. Without this, "the caller isn't the designated approver" (`api.md` §11.7) has nothing to check against, and it becomes possible for the same credential that submitted the task to also approve it. `designated_approver` must never resolve to `requested_by`'s owning principal, and the credential that resolves an approval must be a human-held principal, distinct in kind from the agent-execution tokens used elsewhere on this API — this project's non-negotiable that high-risk actions need human approval, not just an approval-shaped API call, otherwise isn't actually enforced. |
+| `resolved_by` | user ID | only once resolved | Which human approved or rejected it — must equal `designated_approver` (or be a member of it, if a role) |
 | `reason` | string | no | Optional human-supplied rationale, especially useful on rejection |
-| `timeout_ms` | number | no | If set and no human response arrives in time, `status` becomes `TIMED_OUT` and the request is treated as a rejection (fail closed, not fail open) — the task named in `task_id` moves to `FAILED` with a `Policy rejection` error (`orchestration.md` §4.4.2/§4.6), the same target as an explicit `REJECTED` |
+| `timeout_ms` | number | **yes**, with a platform-wide default (e.g. 24h) if the requesting `ToolPolicy` doesn't set one | If no human response arrives in time, `status` becomes `TIMED_OUT` and the request is treated as a rejection (fail closed, not fail open) — the task named in `task_id` moves to `FAILED` with a `Policy rejection` error, then straight to `DEAD_LETTERED` (`orchestration.md` §4.4.2/§4.6), the same as an explicit `REJECTED`. Making this optional-with-no-default was itself a gap: an approval created without a timeout parks its task in `PENDING_APPROVAL` indefinitely, and enough of those can exhaust a department's whole concurrency budget (`orchestration.md` §4.5) — a fail-closed control has to fail closed on *time* as well as on outcome. |
+
+**On the `event.approval_timed_out` audit gap:** `observability.md`'s event catalog lists `approval.requested`/`approved`/`rejected` but not a timeout event — add `approval.timed_out` there too, since the fail-closed timeout path is exactly the one that most needs to be independently observable (nobody explicitly acted, so there's no human-initiated log entry to fall back on otherwise).
 
 ## 8.8 Secret Management
 

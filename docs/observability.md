@@ -83,10 +83,12 @@ Task starts → task.started event → Event Bus → Dashboard / Monitoring / Ot
 
 | Category | Events |
 |---|---|
-| Task | `task.created`, `task.assigned`, `task.started`, `task.completed`, `task.failed`, `task.retried` |
+| Task | `task.created`, `task.assigned`, `task.started`, `task.completed`, `task.partially_completed`, `task.failed`, `task.retried`, `task.timed_out`, `task.cancelled`, `task.dead_lettered` |
 | Agent | `agent.started`, `agent.idle`, `agent.busy`, `agent.error`, `agent.stopped` |
 | Tool | `tool.called`, `tool.completed`, `tool.failed` |
-| Approval | `approval.requested`, `approval.approved`, `approval.rejected` |
+| Approval | `approval.requested`, `approval.approved`, `approval.rejected`, `approval.timed_out` |
+
+The Task row was extended to match every terminal/near-terminal state in `orchestration.md` §4.4.2 — the original list predated `PARTIALLY_COMPLETED`/`TIMED_OUT`/`CANCELLED`/`DEAD_LETTERED` and would otherwise have silently under-instrumented them. `approval.timed_out` matters specifically because it's the fail-closed path that fires when *no one* acts — the one outcome with no human-initiated log entry to fall back on otherwise (`security-architecture.md` §8.7.1).
 
 ```
 Agent / Task System → Event Bus → Dashboard / Logs / Monitoring
