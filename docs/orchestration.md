@@ -276,6 +276,8 @@ This is what lets the platform decide what happens next instead of treating ever
 
 In terms of the task lifecycle (§4.4.2): a `Timeout` failure moves the task to `TIMED_OUT`; every other failure type here moves it to `FAILED`. Retry-eligible failures get the `RETRY` transition until the retry budget is exhausted, at which point they too move to `DEAD_LETTERED`; the two failure types marked not retry-eligible above skip `RETRY` entirely and go straight to `DEAD_LETTERED` on first occurrence.
 
+**`Reassign` follows the same eligibility as `Retry`, not a separate rule.** The recovery-strategy diagram above lists `Retry`/`Reassign`/`Escalate`/`Human Intervention` as four branches, but reassignment is retrying with a different agent instance — the same "was this failure this agent's fault or a real property of the request?" question `Retry`-eligibility already answers. A `Permanent` or `Policy rejection` failure isn't recoverable by handing it to a different agent instance any more than by retrying it with the same one, so both go straight to `DEAD_LETTERED` exactly as stated above — `Reassign` is not a second chance for a failure type `Retry` already excluded. `Escalate`/`Human Intervention` remain available for any failure type, including the non-retry-eligible ones — dead-lettering means "stop auto-retrying," not "stop a human from ever looking at it."
+
 ## 4.7 Agent-to-Agent Collaboration
 
 Agents can work with each other, but not by freely calling whichever agent they want.

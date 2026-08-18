@@ -116,7 +116,7 @@ Task → Timeout → Workflow Decision
                     └── Escalate
 ```
 
-This is the workflow-level view of the same failure classification covered in `orchestration.md` §4.6 — that document covers *how* a failure gets classified (transient, permanent, tool, model, policy rejection, timeout, resource exhaustion, invalid output); this is *what the workflow does* once a task in it fails or times out. Workflows need defined policies here, not indefinite waiting.
+This is the workflow-level view of the same failure classification covered in `orchestration.md` §4.6 — that document covers *how* a failure gets classified (transient, permanent, tool, model, policy rejection, timeout, resource exhaustion, invalid output); this is *what the workflow does* once a task in it fails or times out. Workflows need defined policies here, not indefinite waiting. `Reassign` here follows the same eligibility `orchestration.md` §4.6 defines at the task level — it isn't a separate escape hatch for a task the underlying classification already marked `DEAD_LETTERED` (`Permanent`, or `Policy rejection` including a rejected/timed-out approval); those go to `Escalate`/`Stop`, not `Reassign` or `Retry`, at the workflow level too.
 
 ## 5.7 Cancellation & Resumption
 
@@ -149,6 +149,8 @@ Workflow
 
 Particularly valuable for long-running workflows, where restarting from scratch would waste already-completed work.
 
+**A task that reached `DEAD_LETTERED` is not "interrupted" in the sense this section means.** `Task C — interrupted` above implies a task that can still make progress once resumed; a `DEAD_LETTERED` task (`orchestration.md` §4.4.2/§4.6 — retry budget exhausted, or a `Permanent`/`Policy rejection` failure that was never retry-eligible in the first place) is terminal. Resuming a workflow past one of those means routing around it (skip, escalate, or restart just that branch as a new task), not resuming the same task instance — this section's mechanism is for genuinely paused/interrupted work, not a way to route around a dead-lettered task's own terminal status.
+
 ## 5.8 Human Approval
 
 Some workflow actions are too sensitive to execute automatically:
@@ -167,5 +169,7 @@ Agent → Tool Request → Risk Evaluation → Human Approval Required
                                              ├── APPROVED → Execute
                                              └── REJECTED → Stop
 ```
+
+"Stop" here is the task-level outcome, not automatically the whole workflow's: the specific task moves to `FAILED` (`Policy rejection`) → `DEAD_LETTERED`, non-resumable, per `orchestration.md` §4.4.2/§4.6. Whether the *workflow* also stops (moves to `STOPPED`, §5.7) or continues with its other, independent branches depends on whether the rejected task was on the workflow's critical path — that's this document's existing dependency/branching mechanism deciding, not a new rule. Not resolved further here; flagging so this isn't read as "one rejection always halts the whole workflow" when the dependency structure might say otherwise.
 
 This makes human intervention an explicit, first-class step inside the workflow itself — not an informal check happening somewhere outside the system where it can be silently skipped. Full detail on how approval gates are enforced (and which actions are non-negotiably gated, regardless of workflow urgency) lives in `security-architecture.md`.

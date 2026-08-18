@@ -85,16 +85,16 @@ Task starts → task.started event → Event Bus → Dashboard / Monitoring / Ot
 |---|---|
 | Task | `task.created`, `task.assigned`, `task.started`, `task.completed`, `task.partially_completed`, `task.failed`, `task.retried`, `task.timed_out`, `task.cancelled`, `task.dead_lettered` |
 | Agent | `agent.started`, `agent.idle`, `agent.busy`, `agent.error`, `agent.stopped` |
-| Tool | `tool.called`, `tool.completed`, `tool.failed` |
+| Tool | `tool.called`, `tool.completed`, `tool.failed`, `tool.denied` |
 | Approval | `approval.requested`, `approval.approved`, `approval.rejected`, `approval.timed_out` |
 
-The Task row was extended to match every terminal/near-terminal state in `orchestration.md` §4.4.2 — the original list predated `PARTIALLY_COMPLETED`/`TIMED_OUT`/`CANCELLED`/`DEAD_LETTERED` and would otherwise have silently under-instrumented them. `approval.timed_out` matters specifically because it's the fail-closed path that fires when *no one* acts — the one outcome with no human-initiated log entry to fall back on otherwise (`security-architecture.md` §8.7.1).
+The Task row was extended to match every terminal/near-terminal state in `orchestration.md` §4.4.2 — the original list predated `PARTIALLY_COMPLETED`/`TIMED_OUT`/`CANCELLED`/`DEAD_LETTERED` and would otherwise have silently under-instrumented them. `approval.timed_out` matters specifically because it's the fail-closed path that fires when *no one* acts — the one outcome with no human-initiated log entry to fall back on otherwise (`security-architecture.md` §8.7.1). `tool.denied` is a separate addition: a `ToolPolicy` default-deny or explicit `DENY` (`security-architecture.md` §8.3.2) is a security decision, not a tool malfunction, and without its own event it would otherwise land in `tool.failed` and get conflated with an ordinary external-tool error — exactly the kind of conflation `orchestration.md` §4.6 argues against for failure types generally.
 
 ```
 Agent / Task System → Event Bus → Dashboard / Logs / Monitoring
 ```
 
-The Task events map almost directly onto the task lifecycle states in `orchestration.md` §4.4.2 (`CREATED → QUEUED → ASSIGNED → RUNNING → COMPLETED/FAILED → RETRY`) — the event bus is what makes those state transitions observable to other components instead of only living inside the task queue's internal state. The Approval events are the observable side of `security-architecture.md` §8.7 and `workflow.md` §5.8 — every human-approval gate this platform enforces should be showing up here, auditable, not just executing silently.
+The Task events map almost directly onto the task lifecycle states in `orchestration.md` §4.4.2 (`CREATED → QUEUED → ASSIGNED → RUNNING → COMPLETED/PARTIALLY_COMPLETED/FAILED/TIMED_OUT/CANCELLED/DEAD_LETTERED`, with `RETRY` looping back to `RUNNING`) — the event bus is what makes those state transitions observable to other components instead of only living inside the task queue's internal state. The Approval events are the observable side of `security-architecture.md` §8.7 and `workflow.md` §5.8 — every human-approval gate this platform enforces should be showing up here, auditable, not just executing silently.
 
 ## 10.5 Agent Timeline
 
