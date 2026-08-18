@@ -129,6 +129,8 @@ QUEUED
 ASSIGNED
    ↓
 RUNNING ⇄ PENDING_APPROVAL          (a tool call inside the task needs human sign-off — §8.7)
+   │           │
+   │           └──→ FAILED   (rejected — a Policy rejection per §4.6, not a cancellation)
    │
    ├──→ COMPLETED
    ├──→ PARTIALLY_COMPLETED          (parent task only, mixed child outcomes — §4.4.4)
@@ -138,7 +140,8 @@ RUNNING ⇄ PENDING_APPROVAL          (a tool call inside the task needs human s
 
 CANCELLED can be reached from any non-terminal state above
 (CREATED, QUEUED, ASSIGNED, RUNNING, or PENDING_APPROVAL) — it is a deliberate
-stop, not a failure.
+stop initiated by a human, the orchestrator, or a parent task, not a failure
+and not the same thing as an approval being rejected.
 ```
 
 | State | Meaning |
@@ -147,16 +150,18 @@ stop, not a failure.
 | `QUEUED` | Waiting in the Task Queue (§4.4.1) for an available agent |
 | `ASSIGNED` | A specific agent instance has been assigned, not yet started |
 | `RUNNING` | Actively executing |
-| `PENDING_APPROVAL` | Execution is paused because a tool call inside this task requires human approval before it can continue (`security-architecture.md` §8.7); resumes to `RUNNING` on approval, moves to `CANCELLED` on rejection |
+| `PENDING_APPROVAL` | Execution is paused because a tool call inside this task requires human approval before it can continue (`security-architecture.md` §8.7); resumes to `RUNNING` on approval, moves to `FAILED` (`Policy rejection`, §4.6) on rejection |
 | `COMPLETED` | Finished successfully |
 | `PARTIALLY_COMPLETED` | A parent task's child tasks (§4.4.4) finished with a mix of outcomes — some `COMPLETED`, some `FAILED`/`CANCELLED` — and the parent is returning a best-available result rather than treating the whole task as failed |
-| `FAILED` | Finished unsuccessfully; classified per §4.6 and either retried or escalated |
+| `FAILED` | Finished unsuccessfully; classified per §4.6 (including a rejected approval, as `Policy rejection`) and either retried or escalated |
 | `RETRY` | Being re-attempted after a `FAILED` or `TIMED_OUT` classification, per the agent's retry policy (`runtime-agents.md` §3.2) |
 | `TIMED_OUT` | Exceeded its configured `Timeout` (§4.4.3) before finishing |
-| `CANCELLED` | Stopped intentionally before completion — by a human, the orchestrator, or a parent task's own cancellation — not a failure |
+| `CANCELLED` | Stopped intentionally before completion — by a human, the orchestrator, or a parent task's own cancellation — not a failure, and not the outcome of a rejected approval (that's `FAILED`, above) |
 | `DEAD_LETTERED` | Exhausted its retry budget (or was explicitly non-retryable) and is parked for manual inspection instead of being retried indefinitely |
 
 **Why not `BLOCKED` / `AWAITING_APPROVAL` at the task level?** `runtime-agents.md` §3.4 already uses those exact names for *Agent Health State* — a different concept (can this agent instance make progress on anything right now?) from task lifecycle state (is this specific task progressing?). Reusing the same names here would make logs and dashboards ambiguous about which one a given state refers to. The task-level equivalent of "needs a human" is named `PENDING_APPROVAL` instead, and a generic task-level `BLOCKED` was deliberately not added — a task waiting on something is already represented by the states above (`QUEUED` before assignment, or the parent/child structure in §4.4.4), so a further state isn't warranted yet.
+
+**Why does `TIMED_OUT` get its own state instead of folding into `FAILED` + an error-type field?** Every other failure type in §4.6 is a classification *within* `FAILED` (carried in the task's Error Information field, §4.4.3) rather than its own top-level state — timeout is the one exception, because it's common enough and operationally distinct enough (its own retry/backoff behavior, and dashboards/alerts routinely need to filter "did this time out" without unpacking an error-detail field) to be worth a first-class terminal state. This is a legibility trade-off, not a forced conclusion — reasonable to revisit once Phase 4's durable queue and retry infrastructure is actually built and real timeout volume is observed.
 
 ### 4.4.3 Task Metadata
 
@@ -178,7 +183,7 @@ A task carries enough information for the fleet to track and manage it — usefu
 | Error Information | object (failure type per §4.6, message, stack/trace ref) | only on `FAILED`/`TIMED_OUT`/`DEAD_LETTERED` | Populated on failure |
 | Trace ID | string | yes | Links to the distributed trace |
 
-Full detail on how cost and token usage are actually tracked and aggregated lives in `memory-and-observability.md` — this table is what a task carries, not how the platform rolls it up.
+Full detail on how cost and token usage are actually tracked and aggregated lives in `memory.md` and `observability.md` — this table is what a task carries, not how the platform rolls it up.
 
 ### 4.4.4 Task Hierarchy
 
